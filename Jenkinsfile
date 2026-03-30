@@ -7,7 +7,7 @@ pipeline {
     stages {        
         stage('Checkout Code') {
             steps {                // Jenkins automatically checks out the 'devops-pipelines' repo.// Now we explicitly checkout the application code.                checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']],
+                    branches: [[name: '*/main']]
                     userRemoteConfigs: [url: 'https://github.com/saurabhkulkarni12/simple-dotnet-web-app.git']
                 ])
             }
