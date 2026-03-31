@@ -1,3 +1,6 @@
+tools {
+    dotnet 'dotnet6'
+}
 pipeline {
     agent any
 
@@ -28,7 +31,7 @@ pipeline {
             steps {
                 powershell '''
                     # Build and publish .NET app
-                    dotnet publish simple-dotnet-web-app.sln -c Release -o ./publish_output
+                    dotnet publish ./simple-dotnet-web-app.sln -c Release -o ./publish_output
 
                     # Zip artifact
                     Compress-Archive -Path "./publish_output/*" -DestinationPath "./release.zip" -Force
