@@ -1,8 +1,9 @@
-tools {
-    dotnet 'dotnet6'
-}
+
 pipeline {
     agent any
+    tools {
+    dotnet 'dotnet6'
+}
 
     environment {
         TARGET_SERVERS = '192.168.9.110'
