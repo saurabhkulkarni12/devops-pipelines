@@ -51,7 +51,13 @@ pipeline {
                             \$creds = New-Object System.Management.Automation.PSCredential ('${DEPLOY_CREDS_USR}', \$secpasswd)
 
                             # Copy artifact to remote server
-                            Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\$\\Deployments\\Staging\\release.zip" -Credential \$creds -Force
+                            #Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\$\\Deployments\\Staging\\release.zip" -Credential \$creds -Force
+                            
+                            New-PSDrive -Name Z -PSProvider FileSystem -Root "\\${server}\D$" -Credential $creds -Persist
+
+                            Copy-Item -Path "./release.zip" -Destination "Z:\Deployments\Staging\release.zip" -Force
+
+                            Remove-PSDrive -Name Z
 
                             # Remote deployment
                             Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
