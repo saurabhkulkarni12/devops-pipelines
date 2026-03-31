@@ -1,9 +1,7 @@
 
 pipeline {
-    agent any
-    tools {
-    dotnetsdk 'dotnet8'
-}
+    agent { label 'windows' }
+
 
     environment {
         TARGET_SERVERS = '192.168.9.110'
