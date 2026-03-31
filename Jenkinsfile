@@ -7,8 +7,6 @@ pipeline {
         STAGING_PATH   = 'D:\\Deployments\\Staging'
         BACKUP_PATH    = 'D:\\Deployments\\Backups'
         DEPLOY_CREDS   = credentials('iis-deploy-creds')
-        DEPLOY_CREDS_USR = 'saurabhkulkarni'
-        DEPLOY_CREDS_PSW = 'Mar@2026'
 
     }
 
@@ -20,7 +18,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
                     userRemoteConfigs: [[
-                        url: 'https://github.com/saurabhkulkarni12/simple-dotnet-web-app.git'
+                        url: 'https://github.com/jenkins-docs/simple-dotnet-web-app'
                     ]]
                 ])
             }
