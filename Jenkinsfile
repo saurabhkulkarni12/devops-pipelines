@@ -18,7 +18,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
                     userRemoteConfigs: [[
-                        url: 'https://github.com/jenkins-docs/simple-dotnet-web-app'
+                        url: 'https://github.com/jenkins-docs/simple-dotnet-web-app.git'
                     ]]
                 ])
             }
