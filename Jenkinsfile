@@ -2,7 +2,7 @@
 pipeline {
     agent any
     tools {
-    dotnetsdk 'dotnet6'
+    dotnetsdk 'dotnet8'
 }
 
     environment {
