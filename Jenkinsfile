@@ -52,13 +52,16 @@ pipeline {
 
                                     $drive = "\\\\" + $server + "\\D$"
 
-                                    # Ensure staging directory exists
+                                    # Map drive
                                     net use $drive /user:$username $password
+
+                                    # Ensure staging directory exists
                                     New-Item -ItemType Directory -Force -Path "$drive\\Deployments\\Staging" | Out-Null
 
                                     # Copy artifact
                                     Copy-Item -Path ".\\release.zip" -Destination "$drive\\Deployments\\Staging\\release.zip" -Force
 
+                                    # Disconnect drive
                                     net use $drive /delete
 
                                     # Prepare credentials
@@ -75,21 +78,27 @@ pipeline {
                                         # Ensure backup folder exists
                                         New-Item -ItemType Directory -Force -Path $BackupPath | Out-Null
 
+                                        # ✅ BACKUP FIRST (FULL COPY)
+                                        $BackupFolder = "$BackupPath\\backup_$Timestamp"
+
+                                        Write-Host "Taking full backup..."
+                                        Copy-Item -Path $SitePath -Destination $BackupFolder -Recurse -Force
+                                        Write-Host "Backup completed at $BackupFolder"
+
                                         # Maintenance mode
                                         Set-Content -Path $AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
                                         Start-Sleep -Seconds 3
 
-                                        # Backup
-                                        Compress-Archive -Path "$SitePath\\*" -DestinationPath "$BackupPath\\backup_$Timestamp.zip" -Force
-
-                                        # Cleanup
+                                        # Cleanup old files (except app_offline)
                                         Get-ChildItem -Path $SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
 
-                                        # Deploy
+                                        # Deploy new build
                                         Expand-Archive -Path $ZipFile -DestinationPath $SitePath -Force
 
                                         # Bring app online
                                         Remove-Item -Path $AppOffline -Force
+
+                                        Write-Host "Deployment completed successfully"
                                     } -ArgumentList $env:IIS_SITE_PATH, $env:STAGING_PATH, $env:BACKUP_PATH
                                 '''
                             }
@@ -97,6 +106,15 @@ pipeline {
                     }
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Deployment Successful!'
+        }
+        failure {
+            echo '❌ Deployment Failed!'
         }
     }
 }
