@@ -1,15 +1,11 @@
-
 pipeline {
     agent { label 'windows' }
-
 
     environment {
         TARGET_SERVERS = '192.168.9.110'
         IIS_SITE_PATH = 'C:\\inetpub\\wwwroot\\SimpleDotNetApp'
         STAGING_PATH   = 'D:\\Deployments\\Staging'
         BACKUP_PATH    = 'D:\\Deployments\\Backups'
-        DEPLOY_CREDS   = credentials('iis-deploy-creds')
-
     }
 
     stages {
@@ -29,10 +25,10 @@ pipeline {
         stage('Build & Publish') {
             steps {
                 powershell '''
-                    # Build and publish .NET app
+                    dotnet restore
+                    dotnet build ./simple-dotnet-web-app.sln -c Release
                     dotnet publish ./simple-dotnet-web-app.sln -c Release -o ./publish_output
 
-                    # Zip artifact
                     Compress-Archive -Path "./publish_output/*" -DestinationPath "./release.zip" -Force
                 '''
             }
@@ -43,57 +39,58 @@ pipeline {
                 script {
                     def servers = env.TARGET_SERVERS.split(',')
 
-                     withCredentials([usernamePassword(
+                    withCredentials([usernamePassword(
                         credentialsId: 'iis-deploy-creds',
                         usernameVariable: 'USERNAME',
                         passwordVariable: 'PASSWORD'
                     )]) {
 
-                    for (server in servers) {
-                        echo "Deploying to ${server}..."
+                        for (server in servers) {
+                            echo "Deploying to ${server}..."
 
-                        powershell """
-                            \$secpasswd = ConvertTo-SecureString '${DEPLOY_CREDS_PSW}' -AsPlainText -Force
-                            \$creds = New-Object System.Management.Automation.PSCredential ('${DEPLOY_CREDS_USR}', \$secpasswd)
+                            powershell """
+                                # Map admin share
+                                net use \\\\${server}\\D\\$ /user:$env:USERNAME $env:PASSWORD
 
-                            # Copy artifact to remote server
-                            #Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\$\\Deployments\\Staging\\release.zip" -Credential \$creds -Force
-                            
-                              net use \\${server}\\D\\$ /user:$env:USERNAME $env:PASSWORD
+                                # Copy artifact (FIXED $ escape)
+                                Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\\$\\Deployments\\Staging\\release.zip" -Force
 
-                              Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D$\\Deployments\\Staging\\release.zip" -Force
+                                # Disconnect share
+                                net use \\\\${server}\\D\\$ /delete
 
-                              net use \\${server}\\D\\$ /delete
+                                # Prepare credentials for remote execution
+                                \$secpasswd = ConvertTo-SecureString "$env:PASSWORD" -AsPlainText -Force
+                                \$creds = New-Object System.Management.Automation.PSCredential ("$env:USERNAME", \$secpasswd)
 
-                            # Remote deployment
-                            Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
-                                param(\$SitePath, \$StagePath, \$BackupPath)
+                                # Remote deployment
+                                Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
+                                    param(\$SitePath, \$StagePath, \$BackupPath)
 
-                                \$ZipFile   = "\$StagePath\\release.zip"
-                                \$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                                \$AppOffline = "\$SitePath\\app_offline.htm"
+                                    \$ZipFile   = "\$StagePath\\release.zip"
+                                    \$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                                    \$AppOffline = "\$SitePath\\app_offline.htm"
 
-                                # Maintenance mode
-                                Set-Content -Path \$AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
-                                Start-Sleep -Seconds 3
+                                    # Maintenance mode
+                                    Set-Content -Path \$AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
+                                    Start-Sleep -Seconds 3
 
-                                # Backup
-                                Compress-Archive -Path "\$SitePath\\*" -DestinationPath "\$BackupPath\\backup_\$Timestamp.zip" -Force
+                                    # Backup
+                                    Compress-Archive -Path "\$SitePath\\*" -DestinationPath "\$BackupPath\\backup_\$Timestamp.zip" -Force
 
-                                # Cleanup (except maintenance file)
-                                Get-ChildItem -Path \$SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
+                                    # Cleanup (except maintenance file)
+                                    Get-ChildItem -Path \$SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
 
-                                # Deploy new build
-                                Expand-Archive -Path \$ZipFile -DestinationPath \$SitePath -Force
+                                    # Deploy new build
+                                    Expand-Archive -Path \$ZipFile -DestinationPath \$SitePath -Force
 
-                                # Bring app online
-                                Remove-Item -Path \$AppOffline -Force
-                            } -ArgumentList "${IIS_SITE_PATH}", "${STAGING_PATH}", "${BACKUP_PATH}"
-                        """
+                                    # Bring app online
+                                    Remove-Item -Path \$AppOffline -Force
+                                } -ArgumentList "${IIS_SITE_PATH}", "${STAGING_PATH}", "${BACKUP_PATH}"
+                            """
+                        }
                     }
                 }
             }
         }
     }
-  }
 }
