@@ -5,7 +5,7 @@ pipeline {
         TARGET_SERVER = '192.168.9.110'
         IIS_SITE_PATH = 'C:\\inetpub\\wwwroot\\SimpleDotNetApp'
         BACKUP_PATH   = 'D:\\Deployments\\Backups'
-        BUILD_PATH    = 'D:\\BuildOutput'   // Adjust based on your build
+        BUILD_PATH    = 'D:\\BuildOutput '   // Adjust based on your build
         DEPLOY_CREDS  = credentials('iis-deploy-creds')
     }
 
@@ -13,7 +13,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/jenkins-docs/simple-dotnet-web-app.git'
+                git 'https://github.com/saurabhkulkarni12/simple-dotnet-web-app.git'
             }
         }
 
