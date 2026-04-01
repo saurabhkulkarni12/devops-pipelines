@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'windows-agent' }
+    agent any
 
     environment {
         TARGET_SERVERS = '192.168.9.110'
