@@ -43,6 +43,12 @@ pipeline {
                 script {
                     def servers = env.TARGET_SERVERS.split(',')
 
+                     withCredentials([usernamePassword(
+                        credentialsId: 'iis-deploy-creds',
+                        usernameVariable: 'USERNAME',
+                        passwordVariable: 'PASSWORD'
+                    )]) {
+
                     for (server in servers) {
                         echo "Deploying to ${server}..."
 
@@ -53,11 +59,11 @@ pipeline {
                             # Copy artifact to remote server
                             #Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\$\\Deployments\\Staging\\release.zip" -Credential \$creds -Force
                             
-                            New-PSDrive -Name Z -PSProvider FileSystem -Root "\\${server}\D$" -Credential $creds -Persist
+                              net use \\\\${server}\\D$ /user:$env:USERNAME $env:PASSWORD
 
-                            Copy-Item -Path "./release.zip" -Destination "Z:\Deployments\Staging\release.zip" -Force
+                              Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D$\\Deployments\\Staging\\release.zip" -Force
 
-                            Remove-PSDrive -Name Z
+                              net use \\\\${server}\\D$ /delete
 
                             # Remote deployment
                             Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
@@ -89,4 +95,5 @@ pipeline {
             }
         }
     }
+  }
 }
