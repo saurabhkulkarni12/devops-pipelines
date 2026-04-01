@@ -1,25 +1,31 @@
 pipeline {
-    agent any
+    agent { label 'windows' }
 
     environment {
-        TARGET_SERVER = '192.168.9.110'
+        TARGET_SERVERS = '192.168.9.110'
         IIS_SITE_PATH = 'C:\\inetpub\\wwwroot\\SimpleDotNetApp'
-        BACKUP_PATH   = 'D:\\Deployments\\Backups'
-        BUILD_PATH    = 'D:\\BuildOutput '   // Adjust based on your build
-        DEPLOY_CREDS  = credentials('iis-deploy-creds')
+        STAGING_PATH   = 'D:\\Deployments\\Staging'
+        BACKUP_PATH    = 'D:\\Deployments\\Backups'
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/saurabhkulkarni12/simple-dotnet-web-app.git'
+                git branch: 'main',
+                    url: 'https://github.com/jenkins-docs/simple-dotnet-web-app.git'
             }
         }
 
-        stage('Build Application') {
+        stage('Build & Publish') {
             steps {
-                bat 'dotnet publish -c Release -o %BUILD_PATH%'
+                powershell '''
+                    dotnet restore
+                    dotnet build ./simple-dotnet-web-app.sln -c Release
+                    dotnet publish ./simple-dotnet-web-app.sln -c Release -o ./publish_output
+
+                    Compress-Archive -Path "./publish_output/*" -DestinationPath "./release.zip" -Force
+                '''
             }
         }
 
