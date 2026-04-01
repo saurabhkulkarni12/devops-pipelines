@@ -29,55 +29,74 @@ pipeline {
             }
         }
 
-        stage('Deploy to IIS Server') {
+        stage('Deploy to IIS Servers') {
             steps {
-                powershell '''
-                $secpasswd = ConvertTo-SecureString "$env:DEPLOY_CREDS_PSW" -AsPlainText -Force
-                $cred = New-Object System.Management.Automation.PSCredential ("$env:DEPLOY_CREDS_USR", $secpasswd)
+                script {
+                    def servers = env.TARGET_SERVERS.split(',')
 
-                $session = New-PSSession -ComputerName $env:TARGET_SERVER -Credential $cred
+                    withCredentials([usernamePassword(
+                        credentialsId: 'iis-deploy-creds',
+                        usernameVariable: 'USERNAME',
+                        passwordVariable: 'PASSWORD'
+                    )]) {
 
-                # Stop IIS
-                Invoke-Command -Session $session -ScriptBlock {
-                    Stop-Service W3SVC -Force
+                        for (server in servers) {
+                            echo "Deploying to ${server}"
+
+                            withEnv(["TARGET_SERVER=${server}"]) {
+
+                                powershell '''
+                                    $server = $env:TARGET_SERVER
+                                    $username = $env:USERNAME
+                                    $password = $env:PASSWORD
+
+                                    $drive = "\\\\" + $server + "\\D$"
+
+                                    # Ensure staging directory exists
+                                    net use $drive /user:$username $password
+                                    New-Item -ItemType Directory -Force -Path "$drive\\Deployments\\Staging" | Out-Null
+
+                                    # Copy artifact
+                                    Copy-Item -Path ".\\release.zip" -Destination "$drive\\Deployments\\Staging\\release.zip" -Force
+
+                                    net use $drive /delete
+
+                                    # Prepare credentials
+                                    $secpasswd = ConvertTo-SecureString $password -AsPlainText -Force
+                                    $creds = New-Object System.Management.Automation.PSCredential ($username, $secpasswd)
+
+                                    Invoke-Command -ComputerName $server -Credential $creds -ScriptBlock {
+                                        param($SitePath, $StagePath, $BackupPath)
+
+                                        $ZipFile   = "$StagePath\\release.zip"
+                                        $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                                        $AppOffline = "$SitePath\\app_offline.htm"
+
+                                        # Ensure backup folder exists
+                                        New-Item -ItemType Directory -Force -Path $BackupPath | Out-Null
+
+                                        # Maintenance mode
+                                        Set-Content -Path $AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
+                                        Start-Sleep -Seconds 3
+
+                                        # Backup
+                                        Compress-Archive -Path "$SitePath\\*" -DestinationPath "$BackupPath\\backup_$Timestamp.zip" -Force
+
+                                        # Cleanup
+                                        Get-ChildItem -Path $SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
+
+                                        # Deploy
+                                        Expand-Archive -Path $ZipFile -DestinationPath $SitePath -Force
+
+                                        # Bring app online
+                                        Remove-Item -Path $AppOffline -Force
+                                    } -ArgumentList $env:IIS_SITE_PATH, $env:STAGING_PATH, $env:BACKUP_PATH
+                                '''
+                            }
+                        }
+                    }
                 }
-
-                # Take Backup
-                Invoke-Command -Session $session -ScriptBlock {
-                    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-                    Copy-Item "$env:IIS_SITE_PATH" "$env:BACKUP_PATH\\Backup_$timestamp" -Recurse
-                }
-
-                # Clean old files
-                Invoke-Command -Session $session -ScriptBlock {
-                    Remove-Item "$env:IIS_SITE_PATH\\*" -Recurse -Force
-                }
-
-                # Copy new build
-                Copy-Item "$env:BUILD_PATH\\*" -Destination "$env:IIS_SITE_PATH" -Recurse -ToSession $session
-
-                # Start IIS
-                Invoke-Command -Session $session -ScriptBlock {
-                    Start-Service W3SVC
-                }
-
-                # Verify IIS
-                Invoke-Command -Session $session -ScriptBlock {
-                    Get-Service W3SVC
-                }
-
-                Remove-PSSession $session
-                '''
             }
-        }
-    }
-
-    post {
-        success {
-            echo '✅ Deployment Successful!'
-        }
-        failure {
-            echo '❌ Deployment Failed!'
         }
     }
 }
