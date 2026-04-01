@@ -43,7 +43,6 @@ pipeline {
                         for (server in servers) {
                             echo "Deploying to ${server}"
 
-                            // pass server as env var to avoid Groovy interpolation
                             withEnv(["TARGET_SERVER=${server}"]) {
 
                                 powershell '''
@@ -51,7 +50,6 @@ pipeline {
                                     $username = $env:USERNAME
                                     $password = $env:PASSWORD
 
-                                    # Build admin share path safely
                                     $drive = "\\\\" + $server + "\\D$"
 
                                     # Map drive
@@ -74,12 +72,27 @@ pipeline {
                                         $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
                                         $AppOffline = "$SitePath\\app_offline.htm"
 
+                                        Write-Host "===== START DEPLOYMENT ====="
+                                        Write-Host "Site Path: $SitePath"
+                                        Write-Host "Backup Path: $BackupPath"
+
+                                        # Ensure backup directory exists
+                                        if (!(Test-Path $BackupPath)) {
+                                            New-Item -ItemType Directory -Path $BackupPath -Force
+                                            Write-Host "Created backup directory"
+                                        }
+
+                                        # Create backup file path
+                                        $BackupFile = Join-Path $BackupPath ("backup_" + $Timestamp + ".zip")
+
+                                        Write-Host "Creating backup: $BackupFile"
+
+                                        # Backup
+                                        Compress-Archive -Path "$SitePath\\*" -DestinationPath $BackupFile -Force
+
                                         # Maintenance mode
                                         Set-Content -Path $AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
                                         Start-Sleep -Seconds 3
-
-                                        # Backup
-                                        Compress-Archive -Path "$SitePath\\*" -DestinationPath "$BackupPath\\backup_$Timestamp.zip" -Force
 
                                         # Cleanup
                                         Get-ChildItem -Path $SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
@@ -89,6 +102,8 @@ pipeline {
 
                                         # Bring app online
                                         Remove-Item -Path $AppOffline -Force
+
+                                        Write-Host "===== DEPLOYMENT COMPLETED ====="
                                     } -ArgumentList $env:IIS_SITE_PATH, $env:STAGING_PATH, $env:BACKUP_PATH
                                 '''
                             }
