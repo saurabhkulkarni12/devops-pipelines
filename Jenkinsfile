@@ -12,13 +12,8 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/jenkins-docs/simple-dotnet-web-app.git'
-                    ]]
-                ])
+                git branch: 'main',
+                    url: 'https://github.com/jenkins-docs/simple-dotnet-web-app.git'
             }
         }
 
@@ -46,47 +41,57 @@ pipeline {
                     )]) {
 
                         for (server in servers) {
-                            echo "Deploying to ${server}..."
+                            echo "Deploying to ${server}"
 
-                            powershell """
-                                # Map admin share
-                                net use \\\\${server}\\D\\$ /user:$env:USERNAME $env:PASSWORD
+                            // pass server as env var to avoid Groovy interpolation
+                            withEnv(["TARGET_SERVER=${server}"]) {
 
-                                # Copy artifact (FIXED $ escape)
-                                Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\\$\\Deployments\\Staging\\release.zip" -Force
+                                powershell '''
+                                    $server = $env:TARGET_SERVER
+                                    $username = $env:USERNAME
+                                    $password = $env:PASSWORD
 
-                                # Disconnect share
-                                net use \\\\${server}\\D\\$ /delete
+                                    # Build admin share path safely
+                                    $drive = "\\\\" + $server + "\\D$"
 
-                                # Prepare credentials for remote execution
-                                \$secpasswd = ConvertTo-SecureString "$env:PASSWORD" -AsPlainText -Force
-                                \$creds = New-Object System.Management.Automation.PSCredential ("$env:USERNAME", \$secpasswd)
+                                    # Map drive
+                                    net use $drive /user:$username $password
 
-                                # Remote deployment
-                                Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
-                                    param(\$SitePath, \$StagePath, \$BackupPath)
+                                    # Copy artifact
+                                    Copy-Item -Path ".\\release.zip" -Destination "$drive\\Deployments\\Staging\\release.zip" -Force
 
-                                    \$ZipFile   = "\$StagePath\\release.zip"
-                                    \$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                                    \$AppOffline = "\$SitePath\\app_offline.htm"
+                                    # Disconnect
+                                    net use $drive /delete
 
-                                    # Maintenance mode
-                                    Set-Content -Path \$AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
-                                    Start-Sleep -Seconds 3
+                                    # Prepare credentials
+                                    $secpasswd = ConvertTo-SecureString $password -AsPlainText -Force
+                                    $creds = New-Object System.Management.Automation.PSCredential ($username, $secpasswd)
 
-                                    # Backup
-                                    Compress-Archive -Path "\$SitePath\\*" -DestinationPath "\$BackupPath\\backup_\$Timestamp.zip" -Force
+                                    Invoke-Command -ComputerName $server -Credential $creds -ScriptBlock {
+                                        param($SitePath, $StagePath, $BackupPath)
 
-                                    # Cleanup (except maintenance file)
-                                    Get-ChildItem -Path \$SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
+                                        $ZipFile   = "$StagePath\\release.zip"
+                                        $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                                        $AppOffline = "$SitePath\\app_offline.htm"
 
-                                    # Deploy new build
-                                    Expand-Archive -Path \$ZipFile -DestinationPath \$SitePath -Force
+                                        # Maintenance mode
+                                        Set-Content -Path $AppOffline -Value "<html><body><h1>Maintenance</h1></body></html>"
+                                        Start-Sleep -Seconds 3
 
-                                    # Bring app online
-                                    Remove-Item -Path \$AppOffline -Force
-                                } -ArgumentList "${IIS_SITE_PATH}", "${STAGING_PATH}", "${BACKUP_PATH}"
-                            """
+                                        # Backup
+                                        Compress-Archive -Path "$SitePath\\*" -DestinationPath "$BackupPath\\backup_$Timestamp.zip" -Force
+
+                                        # Cleanup
+                                        Get-ChildItem -Path $SitePath -Exclude "app_offline.htm" | Remove-Item -Recurse -Force
+
+                                        # Deploy
+                                        Expand-Archive -Path $ZipFile -DestinationPath $SitePath -Force
+
+                                        # Bring app online
+                                        Remove-Item -Path $AppOffline -Force
+                                    } -ArgumentList $env:IIS_SITE_PATH, $env:STAGING_PATH, $env:BACKUP_PATH
+                                '''
+                            }
                         }
                     }
                 }
