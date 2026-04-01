@@ -59,11 +59,11 @@ pipeline {
                             # Copy artifact to remote server
                             #Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D\$\\Deployments\\Staging\\release.zip" -Credential \$creds -Force
                             
-                              net use \\\\${server}\\D$ /user:$env:USERNAME $env:PASSWORD
+                              net use \\${server}\\D\\$ /user:$env:USERNAME $env:PASSWORD
 
                               Copy-Item -Path "./release.zip" -Destination "\\\\${server}\\D$\\Deployments\\Staging\\release.zip" -Force
 
-                              net use \\\\${server}\\D$ /delete
+                              net use \\${server}\\D\\$ /delete
 
                             # Remote deployment
                             Invoke-Command -ComputerName ${server} -Credential \$creds -ScriptBlock {
